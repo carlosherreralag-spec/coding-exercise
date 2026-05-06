@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "exclude": [
+    "src/coding-candidate-exercise.ts"
+  ],
+  "ts-node": {
+    "files": true,
+    "transpileOnly": true
+  }
+}
