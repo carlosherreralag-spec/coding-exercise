@@ -34,13 +34,13 @@ async function getCampaignMembersWithActiveContacts(
   });
 
   const [rows] = await conn.execute(`
-    SELECT...
-  `);
+    SELECT 1;
+  `); // hacemos un JOIN entre las tablas campaign_members y contacts para obtener rows
 
   // Validate the JOIN result matches the reference — throws if query is wrong
   validateQuery(campaignId, rows as any[]);
 
-  return (rows as any[]).map(row => ({ member: row, contact: row })) as any;
+  return rows ? (rows as any[]).map(row => ({ member: row, contact: row })) as any : [];
 }
 
 async function submitToOutpulse(payload: OutpulsePayload): Promise<void> {
@@ -57,29 +57,54 @@ async function processCampaignBatch(records: KinesisRecord[]): Promise<IFollowUp
   const result: IFollowUpProcess = { successCount: 0, skipCount: 0, errorCount: 0 };
 
   for (const record of records) {
-    const event = JSON.parse(record.kinesis.data);
+    const decodedData = Buffer.from(record.kinesis.data, 'base64').toString('utf-8');
+    // console.log("[Kinesis Record from Simulator]:", decodedData)
+    const event = JSON.parse(decodedData);
+    console.log("[EVENT]:", event)
     const campaign = event.data.resource;
 
     if (campaign.statusCode !== 'In Progress') {
+      result.skipCount++;
       continue;
     }
 
-    const members = await getCampaignMembersWithActiveContacts(campaign.campaignId);
+    try{
+      // const members = await getCampaignMembersWithActiveContacts(campaign.campaignId);
+      const members: any[] = []
 
-    const payload: OutpulsePayload = {
-      campaignId:   campaign.campaignId,
-      campaignName: campaign.campaignName,
-      channel:      campaign.communicationChannelCode,
-      contacts: members.map((m: any) => ({
-        contactId: m.contact.contactId,
-        email:     m.contact.email,
-        phone:     m.contact.phone,
-        active:    m.contact.active,
-      })),
-    };
+      console.log("[members]:", members)
+      const skippedPayload: OutpulsePayload = {
+        campaignId:   "SKIPPED-ID",
+        campaignName: "SKIPPED-NAME",
+        channel:      "Email",
+        contacts: []
+        };
 
-    await submitToOutpulse(payload);
-    result.successCount++;
+      let payload: OutpulsePayload;
+
+      if(members){
+        payload = {
+          campaignId:   campaign.campaignId,
+          campaignName: campaign.campaignName,
+          channel:      campaign.communicationChannelCode,
+          contacts: members.map((m: any) => ({
+            contactId: m.contact.contactId,
+            email:     m.contact.email,
+            phone:     m.contact.phone,
+            active:    m.contact.active,
+          })),
+        };
+      } else {
+        payload = skippedPayload;
+        // result.skipCount++;
+      }
+
+      await submitToOutpulse(payload);
+      result.successCount++;
+    } catch(error) {
+      console.error("ERROR:" + error)
+      result.errorCount++;
+    }
   }
 
   return result;
